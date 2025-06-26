@@ -38,18 +38,17 @@ function New-LabUser {
 function Test-Login {
     param([string]$User, [string]$Pwd, [int]$Attempt)
 
-    try {
-        $secure = ConvertTo-SecureString $Pwd -AsPlainText -Force
-        $cred   = New-Object System.Management.Automation.PSCredential("$env:COMPUTERNAME\$User",$secure)
-
-        Start-Process -FilePath "whoami.exe" -Credential $cred -NoNewWindow -Wait -ErrorAction Stop | Out-Null
+    $cmd = "net use \\localhost\IPC$ /user:$env:COMPUTERNAME\$User `"$Pwd`" /persistent:no"
+    if (cmd /c $cmd) {
         Write-Host "Attempt $Attempt : SUCCESS"
+        cmd /c "net use \\localhost\IPC$ /delete" | Out-Null
         return $true
-    } catch {
+    } else {
         Write-Host "Attempt $Attempt : FAILED"
         return $false
     }
 }
+
 
 #------- Safety Checks -------#
 
@@ -65,7 +64,7 @@ if (-not ([Security.Principal.WindowsPrincipal] `
 
 #------- Main Flow -------#
 
-sleep 90
+sleep 60
 
 New-LabUser -User $UserName -PwdPlain $PasswordPlain
 New-LabUser -User $UserName2 -PwdPlain $PasswordPlain 
