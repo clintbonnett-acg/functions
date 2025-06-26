@@ -65,6 +65,8 @@ if (-not ([Security.Principal.WindowsPrincipal] `
 
 #------- Main Flow -------#
 
+sleep 90
+
 New-LabUser -User $UserName -PwdPlain $PasswordPlain
 New-LabUser -User $UserName2 -PwdPlain $PasswordPlain 
 
