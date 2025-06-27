@@ -97,25 +97,26 @@ if (-not (Get-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue)) 
     # 2. Download script to fixed path
     Invoke-WebRequest -Uri $gitRaw -OutFile $scriptDest -UseBasicParsing
 
-    # 3. Schedule one-shot run for +$delayMinutes
-    $startDT = (Get-Date).AddMinutes($delayMinutes)
-    $runDate = $startDT.ToString('MM/dd/yyyy')
-    $runTime = $startDT.ToString('HH:mm:ss')
+    # 3. Build a one-shot trigger for ‘now + 5 minutes’
+    $runDateTime = (Get-Date).AddMinutes($delayMinutes)
+    $trigger     = New-ScheduledTaskTrigger -Once -At $runDateTime
 
-    $schtasksCmd = @"
-schtasks /Create /TN $taskName /SC ONCE /SD $runDate /ST $runTime `
-/RU SYSTEM /RL HIGHEST /F /TR "powershell -ExecutionPolicy Bypass -File $scriptDest"
-"@
+    # -Action: run this script elevated
+    $action  = New-ScheduledTaskAction `
+                 -Execute "powershell.exe" `
+                 -Argument "-ExecutionPolicy Bypass -File `"$scriptDest`""
 
-    Write-Log "Running: $schtasksCmd"            'Information'
+    # -Principal: SYSTEM account, highest privileges
+    $principal = New-ScheduledTaskPrincipal -UserId 'SYSTEM' -RunLevel Highest
 
-    $result = cmd /c $schtasksCmd
-    if ($LASTEXITCODE -ne 0) {
-        Write-Log "SCHTASKS returned $LASTEXITCODE : $result" 'Error'
-        throw "Scheduled-task creation failed."
-    }
+    # 4. Register the task
+    Register-ScheduledTask -TaskName $taskName `
+                           -Action    $action `
+                           -Trigger   $trigger `
+                           -Principal $principal `
+                           -Force
 
-    Write-Log "Scheduled task '$taskName' registered for $runDate $runTime. Exiting bootstrap."
+    Write-Log "Task '$taskName' registered to run at $($runDateTime.ToString('u')). Exiting bootstrap."
     exit 0
 }
 
