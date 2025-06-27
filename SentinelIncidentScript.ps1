@@ -64,6 +64,30 @@ if (-not ([Security.Principal.WindowsPrincipal] `
 
 #------- Main Flow -------#
 
+# --- Self-scheduling wrapper -----------------------------------------------
+$delayMinutes = 5
+$taskName     = 'SentinelIncidentCreation'
+
+# Create the task only on first run
+if (-not (Get-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue)) {
+
+    # Calculate start time = now + delayMinutes
+    $start = (Get-Date).AddMinutes($delayMinutes).ToString('HH:mm')
+
+    # Re-invoke this same script via schtasks
+    schtasks /Create `
+        /TN $taskName `
+        /SC ONCE `
+        /ST $start `
+        /RL HIGHEST `
+        /F `
+        /TR "powershell -ExecutionPolicy Bypass -File `"$PSCommandPath`""
+
+    Write-Host "Scheduled $taskName to run at $start. Exiting bootstrap run."
+    exit 0
+}
+
+
 New-LabUser -User $UserName -PwdPlain $PasswordPlain
 New-LabUser -User $UserName2 -PwdPlain $PasswordPlain 
 
