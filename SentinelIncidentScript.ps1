@@ -63,7 +63,7 @@ if (-not ([Security.Principal.WindowsPrincipal] `
 }
 
 # =======================================================================
-#  SentinelSim  –  bootstrap & self-scheduling header (v2)
+#  SentinelSim  –  bootstrap & self-scheduling header  (v3)
 # =======================================================================
 
 $eventSource   = 'SentinelSim'
@@ -91,23 +91,31 @@ if (-not (Get-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue)) 
 
     Write-Log "Bootstrap run – downloading latest script & registering scheduled task."
 
-    # 1. Ensure folder
+    # 1. Folder
     New-Item -Path $labFolder -ItemType Directory -Force | Out-Null
 
-    # 2. Always (re)download the latest script from GitHub
+    # 2. Download script to fixed path
     Invoke-WebRequest -Uri $gitRaw -OutFile $scriptDest -UseBasicParsing
 
     # 3. Schedule one-shot run for +$delayMinutes
-    $runTime = (Get-Date).AddMinutes($delayMinutes).ToString('HH:mm')
-    schtasks /Create `
-        /TN $taskName `
-        /SC ONCE `
-        /ST $runTime `
-        /RL HIGHEST `
-        /F `
-        /TR "powershell -ExecutionPolicy Bypass -File `"$scriptDest`""
+    $startDT = (Get-Date).AddMinutes($delayMinutes)
+    $runDate = $startDT.ToString('MM/dd/yyyy')
+    $runTime = $startDT.ToString('HH:mm:ss')
 
-    Write-Log "Scheduled task '$taskName' will run at $runTime. Exiting bootstrap."
+    $schtasksCmd = @"
+schtasks /Create /TN $taskName /SC ONCE /SD $runDate /ST $runTime `
+/RU SYSTEM /RL HIGHEST /F /TR "powershell -ExecutionPolicy Bypass -File $scriptDest"
+"@
+
+    Write-Log "Running: $schtasksCmd"            'Information'
+
+    $result = cmd /c $schtasksCmd
+    if ($LASTEXITCODE -ne 0) {
+        Write-Log "SCHTASKS returned $LASTEXITCODE : $result" 'Error'
+        throw "Scheduled-task creation failed."
+    }
+
+    Write-Log "Scheduled task '$taskName' registered for $runDate $runTime. Exiting bootstrap."
     exit 0
 }
 
