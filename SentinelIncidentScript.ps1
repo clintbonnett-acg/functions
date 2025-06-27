@@ -62,30 +62,56 @@ if (-not ([Security.Principal.WindowsPrincipal] `
     throw "Run this script from an *elevated* PowerShell session."
 }
 
-#------- Main Flow -------#
+# =======================================================================
+#  SentinelSim  –  bootstrap & self-scheduling header (v2)
+# =======================================================================
 
-# --- Self-scheduling wrapper -----------------------------------------------
-$delayMinutes = 5
-$taskName     = 'SentinelIncidentCreation'
+$eventSource   = 'SentinelSim'
+$logName       = 'Application'
+$delayMinutes  = 5
+$taskName      = 'SentinelSim'
+$labFolder     = 'C:\Lab'
+$scriptDest    = Join-Path $labFolder 'SentinelIncidentScript.ps1'
+$gitRaw        = 'https://raw.githubusercontent.com/clintbonnett-acg/functions/main/SentinelIncidentScript.ps1'
 
-# Create the task only on first run
+# ---------- Ensure event-log source ----------
+if (-not [System.Diagnostics.EventLog]::SourceExists($eventSource)) {
+    New-EventLog -LogName $logName -Source $eventSource
+}
+function Write-Log($msg, $type='Information') {
+    Write-EventLog -LogName $logName -Source $eventSource -EntryType $type -EventId 3000 -Message $msg
+}
+trap {
+    Write-Log "ERROR: $($_.Exception.Message)`n$($_.Exception.StackTrace)" 'Error'
+    exit 1
+}
+
+# ---------- Bootstrap run ----------
 if (-not (Get-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue)) {
 
-    # Calculate start time = now + delayMinutes
-    $start = (Get-Date).AddMinutes($delayMinutes).ToString('HH:mm')
+    Write-Log "Bootstrap run – downloading latest script & registering scheduled task."
 
-    # Re-invoke this same script via schtasks
+    # 1. Ensure folder
+    New-Item -Path $labFolder -ItemType Directory -Force | Out-Null
+
+    # 2. Always (re)download the latest script from GitHub
+    Invoke-WebRequest -Uri $gitRaw -OutFile $scriptDest -UseBasicParsing
+
+    # 3. Schedule one-shot run for +$delayMinutes
+    $runTime = (Get-Date).AddMinutes($delayMinutes).ToString('HH:mm')
     schtasks /Create `
         /TN $taskName `
         /SC ONCE `
-        /ST $start `
+        /ST $runTime `
         /RL HIGHEST `
         /F `
-        /TR "powershell -ExecutionPolicy Bypass -File `"$PSCommandPath`""
+        /TR "powershell -ExecutionPolicy Bypass -File `"$scriptDest`""
 
-    Write-Host "Scheduled $taskName to run at $start. Exiting bootstrap run."
+    Write-Log "Scheduled task '$taskName' will run at $runTime. Exiting bootstrap."
     exit 0
 }
+
+Write-Log "Scheduled run started – generating authentication noise."
 
 
 New-LabUser -User $UserName -PwdPlain $PasswordPlain
